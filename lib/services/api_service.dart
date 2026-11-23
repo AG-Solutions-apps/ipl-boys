@@ -90,6 +90,27 @@ class ApiService {
     }
   }
 
+  Future<void> logout() async {
+    try {
+      await _client.post(Uri.parse('${AppConfig.cleanBaseUrl}/auth/logout'), headers: _headers)
+          .timeout(const Duration(seconds: 8));
+    } catch (_) {
+      // Clear local credentials even if the device is offline.
+    }
+  }
+
+  Future<Map<String, dynamic>> getCurrentUser() async {
+    final response = await _client.get(Uri.parse('${AppConfig.cleanBaseUrl}/auth/user'), headers: _headers)
+        .timeout(const Duration(seconds: 12));
+    final decoded = jsonDecode(response.body);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(decoded is Map ? (decoded['error'] ?? 'Session expired') : 'Session expired');
+    }
+    final user = decoded is Map ? decoded['user'] : null;
+    if (user is! Map<String, dynamic>) throw Exception('Session is invalid');
+    return user;
+  }
+
   /// Core Dynamic GET query builder for any table
   Future<List<dynamic>> queryTable(
     String table, {
@@ -168,6 +189,21 @@ class ApiService {
 
   /// Fetch all Dynamic Profiles from live backend
   Future<List<Map<String, dynamic>>> getProfiles() async {
+    if (authToken != null && authToken!.isNotEmpty) {
+      try {
+        final response = await _client.get(
+          Uri.parse('${AppConfig.cleanBaseUrl}/auth/profiles'),
+          headers: _headers,
+        ).timeout(const Duration(seconds: 15));
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          final decoded = jsonDecode(response.body);
+          if (decoded is List) return decoded.cast<Map<String, dynamic>>();
+        }
+      } catch (e) {
+        print('Could not fetch assigned profiles: $e');
+      }
+      return [];
+    }
     var list = await queryTable('game_profiles');
     if (list.isEmpty) {
       list = await queryTable('profiles');
@@ -263,13 +299,15 @@ class ApiService {
     required List<String> substitutes,
     String? captain,
     String? viceCaptain,
+    Map<String, dynamic>? chips,
   }) async {
     final payload = <String, dynamic>{
       'starting_xi': startingXi,
       'substitutes': substitutes,
+      'captain': captain,
+      'vice_captain': viceCaptain,
+      if (chips != null) 'chips': chips,
     };
-    if (captain != null) payload['captain'] = captain;
-    if (viceCaptain != null) payload['vice_captain'] = viceCaptain;
 
     return await updateRecord('fpl_teams', teamId, payload);
   }
@@ -278,6 +316,30 @@ class ApiService {
   Future<bool> executeTrade(String tradeId) async {
     return await callRpc('execute_trade', {'trade_id': tradeId});
   }
+
+  Future<bool> createTrade({
+    required String profileId,
+    required String fromTeamId,
+    required String toTeamId,
+    required List<String> playersFrom,
+    required List<String> playersTo,
+    required int moneyFrom,
+    required int moneyTo,
+    required bool isPermanent,
+    String? loanStartGameweek,
+    String? loanEndGameweek,
+  }) => callRpc('create_trade', {
+        'profile_id': profileId,
+        'from_team_id': fromTeamId,
+        'to_team_id': toTeamId,
+        'players_from': playersFrom,
+        'players_to': playersTo,
+        'money_from': moneyFrom,
+        'money_to': moneyTo,
+        'is_permanent': isPermanent,
+        if (!isPermanent) 'gameweek_loan_start': loanStartGameweek,
+        if (!isPermanent) 'gameweek_loan_end': loanEndGameweek,
+      });
 
   /// Execute Remote Procedure Call
   Future<bool> callRpc(String functionName, Map<String, dynamic> params) async {

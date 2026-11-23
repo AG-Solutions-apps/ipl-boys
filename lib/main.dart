@@ -5,6 +5,7 @@ import 'services/auth_service.dart';
 import 'theme/app_theme.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
+import 'screens/pending_approval_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,7 +35,9 @@ class IplFplApp extends StatelessWidget {
             ),
           );
         } else if (auth.isLoggedIn || auth.isGuest) {
-          startScreen = const HomeScreen();
+          startScreen = auth.isLoggedIn && !auth.isApproved
+              ? const PendingApprovalScreen()
+              : const HomeScreen();
         } else {
           startScreen = const LoginScreen();
         }

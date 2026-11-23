@@ -5,6 +5,7 @@ import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import 'home_screen.dart';
 import 'signup_screen.dart';
+import 'pending_approval_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -47,7 +48,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (result['success'] == true) {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
+          MaterialPageRoute(builder: (_) => auth.isApproved ? const HomeScreen() : const PendingApprovalScreen()),
         );
       } else {
         setState(() {
@@ -56,15 +57,6 @@ class _LoginScreenState extends State<LoginScreen> {
         });
       }
     }
-  }
-
-  void _continueAsGuest() {
-    final auth = Provider.of<AuthService>(context, listen: false);
-    auth.continueAsGuest();
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const HomeScreen()),
-    );
   }
 
   @override
@@ -232,21 +224,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-
-                  // Continue as Guest Button
-                  SizedBox(
-                    height: 48,
-                    child: OutlinedButton(
-                      onPressed: _continueAsGuest,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppTheme.textSecondary,
-                        side: const BorderSide(color: AppTheme.border),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: const Text('Continue as Guest'),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
 
                   // Sign Up Navigation Link
                   Row(
