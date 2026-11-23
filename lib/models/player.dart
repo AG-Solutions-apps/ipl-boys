@@ -5,6 +5,7 @@ class Player {
   final String iplTeamId;
   final String tier;
   final int basePrice;
+  final int weight;
   final bool isOverseas;
   final bool isUncapped;
   final int totalPoints;
@@ -17,6 +18,7 @@ class Player {
     required this.iplTeamId,
     required this.tier,
     required this.basePrice,
+    this.weight = 0,
     required this.isOverseas,
     required this.isUncapped,
     required this.totalPoints,
@@ -31,10 +33,11 @@ class Player {
       iplTeamId: json['ipl_team_id']?.toString() ?? '',
       tier: json['tier']?.toString() ?? 'Tier 3',
       basePrice: int.tryParse(json['base_price']?.toString() ?? '0') ?? 0,
+      weight: int.tryParse(json['weight']?.toString() ?? '0') ?? 0,
       isOverseas: json['is_overseas'] == true || json['is_overseas'] == 1 || json['is_overseas'] == '1',
       isUncapped: json['is_uncapped'] == true || json['is_uncapped'] == 1 || json['is_uncapped'] == '1',
       totalPoints: int.tryParse(json['total_points']?.toString() ?? '0') ?? 0,
-      photoUrl: json['photo_url']?.toString(),
+      photoUrl: (json['image_url'] ?? json['photo_url'])?.toString(),
     );
   }
 
@@ -46,10 +49,11 @@ class Player {
       'ipl_team_id': iplTeamId,
       'tier': tier,
       'base_price': basePrice,
+      'weight': weight,
       'is_overseas': isOverseas ? 1 : 0,
       'is_uncapped': isUncapped ? 1 : 0,
       'total_points': totalPoints,
-      'photo_url': photoUrl,
+      'image_url': photoUrl,
     };
   }
 }

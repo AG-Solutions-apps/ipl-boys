@@ -10,7 +10,6 @@ import '../screens/squad_builder_screen.dart';
 import '../screens/marketplace_screen.dart';
 import '../screens/trades_screen.dart';
 import '../screens/gameweeks_screen.dart';
-import '../screens/admin_panel_screen.dart';
 import '../screens/rules_screen.dart';
 import '../screens/login_screen.dart';
 
@@ -197,13 +196,6 @@ class AppDrawer extends StatelessWidget {
                   title: 'Rules & Scoring',
                   destination: const RulesScreen(),
                 ),
-                _navItem(
-                  context,
-                  icon: Icons.admin_panel_settings_outlined,
-                  title: 'Admin Settings',
-                  destination: const AdminPanelScreen(),
-                ),
-
                 const Divider(color: AppTheme.border, height: 24),
 
                 // Sign In / Sign Out Tile

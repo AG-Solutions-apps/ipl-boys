@@ -4,7 +4,10 @@ class AppConfig {
   /// =========================================================================
   /// LIVE PRODUCTION / HOSTED API BASE URL
   /// =========================================================================
-  static String baseUrl = 'https://agsdemo.in/iplapi/public/api';
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'https://agsdemo.in/iplboysapi/public/api/',
+  );
 
   /// Sanitized base URL with trailing slashes stripped
   static String get cleanBaseUrl {

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../models/trade.dart';
 import '../models/fpl_team.dart';
 import '../models/player.dart';
+import '../models/gameweek.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
@@ -21,6 +22,9 @@ class _TradesScreenState extends State<TradesScreen> {
   List<Trade> _trades = [];
   Map<String, FplTeam> _teamMap = {};
   Map<String, Player> _playerMap = {};
+  List<Map<String, dynamic>> _playerAssignments = [];
+  List<Gameweek> _gameweeks = [];
+  String? _myTeamId;
 
   @override
   void initState() {
@@ -35,12 +39,21 @@ class _TradesScreenState extends State<TradesScreen> {
     final trades = await _api.getTrades(profileId: auth.activeProfileId);
     final teams = await _api.getFplTeams(profileId: auth.activeProfileId);
     final players = await _api.getPlayers();
+    final myTeams = await _api.queryTable('user_team_assignments', filters: {
+      'user_id': auth.currentUser?['id']?.toString() ?? '',
+      'profile_id': auth.activeProfileId,
+    });
+    final assignments = await _api.queryTable('player_assignments', filters: {'profile_id': auth.activeProfileId});
+    final gameweeks = await _api.getGameweeks();
 
     if (mounted) {
       setState(() {
         _trades = trades;
         _teamMap = {for (var t in teams) t.id: t};
         _playerMap = {for (var p in players) p.id: p};
+        _myTeamId = myTeams.isNotEmpty ? myTeams.first['team_id']?.toString() : null;
+        _playerAssignments = assignments.cast<Map<String, dynamic>>();
+        _gameweeks = gameweeks;
         _isLoading = false;
       });
     }
@@ -59,12 +72,88 @@ class _TradesScreenState extends State<TradesScreen> {
     }
   }
 
+  Future<void> _createTrade() async {
+    final myTeamId = _myTeamId;
+    if (myTeamId == null) return;
+    String? targetTeamId;
+    String? offeredPlayerId;
+    String? requestedPlayerId;
+    String? loanStartId;
+    String? loanEndId;
+    String moneyFrom = '0';
+    String moneyTo = '0';
+    bool permanent = true;
+    final teams = _teamMap.values.where((team) => team.id != myTeamId).toList();
+    if (teams.isEmpty) return;
+    targetTeamId = teams.first.id;
+    final picked = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(builder: (context, setDialogState) {
+        final fromPlayers = _playerAssignments.where((row) => row['fpl_team_id']?.toString() == myTeamId).toList();
+        final toPlayers = _playerAssignments.where((row) => row['fpl_team_id']?.toString() == targetTeamId).toList();
+        Widget playerPicker(String label, List<Map<String, dynamic>> rows, String? value, ValueChanged<String?> onChanged) =>
+            DropdownButtonFormField<String>(
+              value: rows.any((row) => row['player_id']?.toString() == value) ? value : null,
+              decoration: InputDecoration(labelText: label),
+              items: [const DropdownMenuItem<String>(value: null, child: Text('No player')), ...rows.map((row) {
+                final id = row['player_id']?.toString() ?? '';
+                return DropdownMenuItem(value: id, child: Text(_playerMap[id]?.name ?? id));
+              })], onChanged: onChanged,
+            );
+        return AlertDialog(
+          title: const Text('Propose a trade'),
+          content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+            DropdownButtonFormField<String>(value: targetTeamId, decoration: const InputDecoration(labelText: 'Trade with'),
+              items: teams.map((team) => DropdownMenuItem(value: team.id, child: Text(team.name))).toList(),
+              onChanged: (value) => setDialogState(() { targetTeamId = value; requestedPlayerId = null; })),
+            const SizedBox(height: 8), playerPicker('Player you offer', fromPlayers, offeredPlayerId, (v) => setDialogState(() => offeredPlayerId = v)),
+            const SizedBox(height: 8), playerPicker('Player you request', toPlayers, requestedPlayerId, (v) => setDialogState(() => requestedPlayerId = v)),
+            TextFormField(decoration: const InputDecoration(labelText: 'Cash you offer'), keyboardType: TextInputType.number, onChanged: (v) => moneyFrom = v),
+            TextFormField(decoration: const InputDecoration(labelText: 'Cash you request'), keyboardType: TextInputType.number, onChanged: (v) => moneyTo = v),
+            SwitchListTile(title: const Text('Permanent transfer'), value: permanent, onChanged: (v) => setDialogState(() => permanent = v)),
+            if (!permanent) ...[
+              DropdownButtonFormField<String>(value: loanStartId, decoration: const InputDecoration(labelText: 'Loan starts'),
+                items: _gameweeks.map((week) => DropdownMenuItem(value: week.id, child: Text(week.name))).toList(),
+                onChanged: (v) => setDialogState(() => loanStartId = v)),
+              DropdownButtonFormField<String>(value: loanEndId, decoration: const InputDecoration(labelText: 'Loan ends'),
+                items: _gameweeks.map((week) => DropdownMenuItem(value: week.id, child: Text(week.name))).toList(),
+                onChanged: (v) => setDialogState(() => loanEndId = v)),
+            ],
+          ])),
+          actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(dialogContext, {
+              'target': targetTeamId, 'offered': offeredPlayerId, 'requested': requestedPlayerId,
+              'moneyFrom': moneyFrom, 'moneyTo': moneyTo, 'permanent': permanent,
+              'start': loanStartId, 'end': loanEndId,
+            }), child: const Text('Send proposal'))],
+        );
+      }),
+    );
+    if (picked == null || !mounted) return;
+    final success = await _api.createTrade(
+      profileId: Provider.of<AuthService>(context, listen: false).activeProfileId,
+      fromTeamId: myTeamId,
+      toTeamId: picked['target'] as String,
+      playersFrom: picked['offered'] == null ? [] : [picked['offered'] as String],
+      playersTo: picked['requested'] == null ? [] : [picked['requested'] as String],
+      moneyFrom: int.tryParse(picked['moneyFrom'] as String) ?? 0,
+      moneyTo: int.tryParse(picked['moneyTo'] as String) ?? 0,
+      isPermanent: picked['permanent'] as bool,
+      loanStartGameweek: picked['start'] as String?,
+      loanEndGameweek: picked['end'] as String?,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(success ? 'Trade proposal sent.' : 'Could not send the trade proposal. Check the teams, budget, and player ownership.')));
+    if (success) _loadTrades();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Trades Hub'),
         actions: [
+          if (_myTeamId != null) IconButton(tooltip: 'Propose trade', icon: const Icon(Icons.add), onPressed: _createTrade),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadTrades,
@@ -164,7 +253,7 @@ class _TradesScreenState extends State<TradesScreen> {
                                 SizedBox(
                                   width: double.infinity,
                                   child: ElevatedButton(
-                                    onPressed: () => _executeTrade(trade.id),
+                                  onPressed: _myTeamId == trade.toTeamId ? () => _executeTrade(trade.id) : null,
                                     child: const Text('EXECUTE TRADE'),
                                   ),
                                 ),

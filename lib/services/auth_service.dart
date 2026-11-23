@@ -25,12 +25,13 @@ class AuthService extends ChangeNotifier {
     if (_currentUser == null) return false;
     final roles = _currentUser!['roles'];
     if (roles is List) {
-      return roles.contains('admin') || roles.contains('commissioner');
+      return roles.contains('app_admin') || roles.contains('profile_admin');
     }
-    return _currentUser!['role'] == 'admin';
+    return _currentUser!['role'] == 'app_admin' || _currentUser!['role'] == 'profile_admin';
   }
   bool get isLoading => _isLoading;
   bool get isLoggedIn => _currentUser != null && !_isGuest;
+  bool get isApproved => _currentUser?['approved'] == true || _currentUser?['approved'] == 1;
   bool get isGuest => _isGuest;
 
   AuthService() {
@@ -39,7 +40,23 @@ class AuthService extends ChangeNotifier {
 
   Future<void> _initialize() async {
     await _loadPreferences();
+    if (_authToken != null && _authToken!.isNotEmpty) {
+      try {
+        _currentUser = await _api.getCurrentUser();
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('user_session', jsonEncode(_currentUser));
+      } catch (_) {
+        _currentUser = null;
+        _authToken = null;
+        ApiService.authToken = null;
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('auth_token');
+        await prefs.remove('user_session');
+      }
+    }
     await fetchLiveProfiles();
+    _isLoading = false;
+    notifyListeners();
   }
 
   /// Load cached preferences
@@ -64,11 +81,7 @@ class AuthService extends ChangeNotifier {
       if (savedUser != null) {
         _currentUser = jsonDecode(savedUser);
       }
-    } catch (_) {
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
+    } catch (_) {}
   }
 
   /// Dynamically load all League Profiles directly from the live API
@@ -129,6 +142,7 @@ class AuthService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('auth_token', token);
       await prefs.setString('user_session', jsonEncode(user));
+      await fetchLiveProfiles();
       notifyListeners();
       return {'success': true};
     } else {
@@ -152,6 +166,7 @@ class AuthService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('auth_token', token);
       await prefs.setString('user_session', jsonEncode(user));
+      await fetchLiveProfiles();
       notifyListeners();
       return {'success': true};
     } else {
@@ -167,6 +182,7 @@ class AuthService extends ChangeNotifier {
 
   /// Logout
   Future<void> logout() async {
+    await _api.logout();
     _currentUser = null;
     _authToken = null;
     _isGuest = false;
